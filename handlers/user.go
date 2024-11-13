@@ -5,7 +5,9 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"log"
+	"net/http"
 	"referral_system/config"
+	"referral_system/controllers"
 	"referral_system/models"
 )
 
@@ -52,4 +54,37 @@ func RegisterUser(c *fiber.Ctx) error {
 			"email": newUser.Email,
 		},
 	})
+}
+
+func LoginUser(c *fiber.Ctx) error {
+	var userInput struct {
+		Email    string
+		Password string
+	}
+	if err := c.BodyParser(&userInput); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid input",
+		})
+	}
+
+	var user models.User
+	if err := config.DB.Where("email = ?", userInput.Email).First(&user).Error; err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Invalid email or password",
+		})
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(userInput.Password), []byte(user.Password)); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid email or password",
+		})
+	}
+
+	token, err := controllers.GenerateJWT(&user)
+	if err != nil {
+		log.Println("Failed to generate JWT:", err)
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+	}
+
+	return c.JSON(fiber.Map{"token": token})
 }
